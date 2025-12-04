@@ -15,14 +15,14 @@ contract StakingAppTest is Test {
     string symbol_ = "STK";
     address owner_ = vm.addr(1);
     address randomUser_ = vm.addr(2);
+    uint256 stakingPeriod_ = 1000000000;
 
     function setUp() public {
         stakingToken = new StakingToken(name_, symbol_);
-        uint256 stakingPeriod = 1000000000;
         uint256 fixedStakingAmount = 10;
         uint256 rewardPerPeriod = 1 ether;
         
-        stakingApp = new StakingApp(address(stakingToken), owner_, stakingPeriod, fixedStakingAmount, rewardPerPeriod);
+        stakingApp = new StakingApp(address(stakingToken), owner_, stakingPeriod_, fixedStakingAmount, rewardPerPeriod);
     }
 
     function testStakingTokenCorrectlyDeployed() external view {
@@ -181,4 +181,103 @@ contract StakingAppTest is Test {
         vm.stopPrank();
     }
     
+
+    function testCannotClaimIfNotStaking() external {
+        vm.startPrank(randomUser_);
+
+        vm.expectRevert("Not staking");
+        stakingApp.claimRewards();
+
+        vm.stopPrank();
+    }
+
+    function testCannotClaimIfNotElapsedTime() external {
+        vm.startPrank(randomUser_);
+
+        uint256 tokenAmount = stakingApp.fixedStakingAmount();
+        stakingToken.mint(tokenAmount);
+
+        uint256 userBalanceBefore = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampBefore = stakingApp.userToBlockTimestamp(randomUser_);
+        
+        IERC20(stakingToken).approve(address(stakingApp), tokenAmount);
+        stakingApp.depositTokens(tokenAmount);
+        
+        uint256 userBalanceAfter = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampAfter = stakingApp.userToBlockTimestamp(randomUser_);
+
+        assertEq(userBalanceAfter - userBalanceBefore, tokenAmount);
+        assertGe(userBlockTimeStampAfter, userBlockTimeStampBefore);
+
+        vm.expectRevert("Need to wait");
+        stakingApp.claimRewards();
+
+        vm.stopPrank(); 
+    }
+
+    function testShouldRevertIfNoEther() external {
+        vm.startPrank(randomUser_);
+
+        uint256 tokenAmount = stakingApp.fixedStakingAmount();
+        stakingToken.mint(tokenAmount);
+
+        uint256 userBalanceBefore = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampBefore = stakingApp.userToBlockTimestamp(randomUser_);
+        
+        IERC20(stakingToken).approve(address(stakingApp), tokenAmount);
+        stakingApp.depositTokens(tokenAmount);
+        
+        uint256 userBalanceAfter = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampAfter = stakingApp.userToBlockTimestamp(randomUser_);
+
+        assertEq(userBalanceAfter - userBalanceBefore, tokenAmount);
+        assertGe(userBlockTimeStampAfter, userBlockTimeStampBefore);
+
+        
+        vm.warp(block.timestamp + stakingPeriod_ );
+
+        vm.expectRevert("Transfer failed");
+        stakingApp.claimRewards();
+
+        vm.stopPrank(); 
+    }
+
+
+   function testCanClaimRewardsCorrectly() external {
+        vm.startPrank(randomUser_);
+
+        uint256 tokenAmount = stakingApp.fixedStakingAmount();
+        stakingToken.mint(tokenAmount);
+
+        uint256 userBalanceBefore = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampBefore = stakingApp.userToBlockTimestamp(randomUser_);
+        
+        IERC20(stakingToken).approve(address(stakingApp), tokenAmount);
+        stakingApp.depositTokens(tokenAmount);
+        
+        uint256 userBalanceAfter = stakingApp.userBalance(randomUser_);
+        uint256 userBlockTimeStampAfter = stakingApp.userToBlockTimestamp(randomUser_);
+
+        assertEq(userBalanceAfter - userBalanceBefore, tokenAmount);
+        assertGe(userBlockTimeStampAfter, userBlockTimeStampBefore);
+
+        vm.stopPrank();
+
+        vm.startPrank(owner_);
+
+        uint256 etherAmount = 10 ether;
+        vm.deal(owner_, etherAmount);
+
+        (bool success, ) = address(stakingApp).call{value: etherAmount}("");
+        require(success, "Test transfer failed");
+        vm.stopPrank();
+
+        vm.startPrank(randomUser_);
+        vm.warp(block.timestamp + stakingPeriod_ );
+
+        stakingApp.claimRewards();
+
+        vm.stopPrank(); 
+    }
+
 }
