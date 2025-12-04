@@ -16,13 +16,12 @@ contract StakingAppTest is Test {
     address owner_ = vm.addr(1);
     address randomUser_ = vm.addr(2);
     uint256 stakingPeriod_ = 1000000000;
+    uint256 fixedStakingAmount_ = 10;
+    uint256 rewardPerPeriod_ = 1 ether;
 
     function setUp() public {
         stakingToken = new StakingToken(name_, symbol_);
-        uint256 fixedStakingAmount = 10;
-        uint256 rewardPerPeriod = 1 ether;
-        
-        stakingApp = new StakingApp(address(stakingToken), owner_, stakingPeriod_, fixedStakingAmount, rewardPerPeriod);
+        stakingApp = new StakingApp(address(stakingToken), owner_, stakingPeriod_, fixedStakingAmount_, rewardPerPeriod_);
     }
 
     function testStakingTokenCorrectlyDeployed() external view {
@@ -275,8 +274,11 @@ contract StakingAppTest is Test {
         vm.startPrank(randomUser_);
         vm.warp(block.timestamp + stakingPeriod_ );
 
+        uint256 etherAmountBefore = address(randomUser_).balance;
         stakingApp.claimRewards();
+        uint256 etherAmountAfter = address(randomUser_).balance;
 
+        assertEq(etherAmountAfter - etherAmountBefore, rewardPerPeriod_);
         vm.stopPrank(); 
     }
 
