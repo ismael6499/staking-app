@@ -1,69 +1,119 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
-import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract StakingApp is Ownable{
+/// @title Staking Application
+/// @author Agustin Acosta
+/// @notice A fixed-amount staking contract with time-based ETH rewards
+contract StakingApp is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    // --- Custom Errors ---
+    error IncorrectAmount(uint256 expected, uint256 provided);
+    error UserAlreadyDeposited();
+    error NotStaking();
+    error StakingPeriodNotFinished(uint256 timeRemaining);
+    error TransferFailed();
+    error InvalidConfiguration();
+
+    // --- State Variables ---
+    IERC20 public immutable stakingToken;
     
-    address public stakingToken;
     uint256 public stakingPeriod;
     uint256 public fixedStakingAmount;
     uint256 public rewardPerPeriod;
 
     mapping(address => uint256) public userBalance;
-    mapping(address => uint256) public userToBlockTimestamp;
+    mapping(address => uint256) public userLastActionTimestamp;
 
-    event ChangedStakingPeriod(uint256 _newStakingPeriod);
-    event DepositTokens(address _userAddress, uint256 _amount);
-    event WithdrawTokens(address _userAddress, uint256 _amount);
-    event EtherSent(uint256 _amount);
+    // --- Events ---
+    event StakingPeriodChanged(uint256 newPeriod);
+    event TokensDeposited(address indexed user, uint256 amount);
+    event TokensWithdrawn(address indexed user, uint256 amount);
+    event RewardsClaimed(address indexed user, uint256 amount);
+    event ContractFunded(address indexed funder, uint256 amount);
 
-    constructor(address _stakingToken, address _owner, uint256 _stakingPeriod, uint256 _fixedStakingAmount, uint256 _rewardPerPeriod) Ownable(_owner){
-        stakingToken = _stakingToken;
+    constructor(
+        address _stakingToken, 
+        uint256 _stakingPeriod, 
+        uint256 _fixedStakingAmount, 
+        uint256 _rewardPerPeriod
+    ) Ownable(msg.sender) {
+        if (_stakingToken == address(0)) revert InvalidConfiguration();
+        
+        stakingToken = IERC20(_stakingToken);
         stakingPeriod = _stakingPeriod;
         fixedStakingAmount = _fixedStakingAmount;
         rewardPerPeriod = _rewardPerPeriod;
     }
 
-    function depositTokens(uint256 _tokenAmountToDeposit) external {
-        require(_tokenAmountToDeposit == fixedStakingAmount, "Incorrect Amount");
-        require(userBalance[msg.sender] == 0, "User already deposited");
+    /// @notice Allows users to deposit the fixed amount of tokens
+    /// @dev Uses SafeERC20 to handle transfers
+    function depositTokens(uint256 _tokenAmountToDeposit) external nonReentrant {
+        if (_tokenAmountToDeposit != fixedStakingAmount) {
+            revert IncorrectAmount(fixedStakingAmount, _tokenAmountToDeposit);
+        }
+        if (userBalance[msg.sender] > 0) {
+            revert UserAlreadyDeposited();
+        }
 
-        userBalance[msg.sender] += _tokenAmountToDeposit;
-        IERC20(stakingToken).transferFrom(msg.sender, address(this), _tokenAmountToDeposit);
-        userToBlockTimestamp[msg.sender] = block.timestamp;
+        // Effect: Update state before interaction
+        userBalance[msg.sender] = _tokenAmountToDeposit;
+        userLastActionTimestamp[msg.sender] = block.timestamp;
         
-        emit DepositTokens(msg.sender, _tokenAmountToDeposit);
+        // Interaction
+        stakingToken.safeTransferFrom(msg.sender, address(this), _tokenAmountToDeposit);
+        
+        emit TokensDeposited(msg.sender, _tokenAmountToDeposit);
     }
 
-    function withdrawTokens() external {
+    /// @notice Allows users to withdraw their staked tokens
+    /// @dev Users can withdraw at any time, but it resets their staking timer
+    function withdrawTokens() external nonReentrant {
         uint256 currentUserBalance = userBalance[msg.sender];
-        userBalance[msg.sender] -= currentUserBalance;
-        IERC20(stakingToken).transfer(msg.sender, currentUserBalance);
+        if (currentUserBalance == 0) revert NotStaking();
+
+        // Effect
+        userBalance[msg.sender] = 0;
+        userLastActionTimestamp[msg.sender] = 0;
+
+        // Interaction
+        stakingToken.safeTransfer(msg.sender, currentUserBalance);
         
-        emit WithdrawTokens(msg.sender, currentUserBalance);
+        emit TokensWithdrawn(msg.sender, currentUserBalance);
     }
 
-    function claimRewards() external {
-        require(userBalance[msg.sender] == fixedStakingAmount, "Not staking");
+    /// @notice Claims ETH rewards if the staking period has passed
+    function claimRewards() external nonReentrant {
+        if (userBalance[msg.sender] == 0) revert NotStaking();
+
+        uint256 timeElapsed = block.timestamp - userLastActionTimestamp[msg.sender];
         
-        uint256 elapsedPeriod = block.timestamp - userToBlockTimestamp[msg.sender];
-        require(elapsedPeriod >= stakingPeriod, "Need to wait");
+        if (timeElapsed < stakingPeriod) {
+            revert StakingPeriodNotFinished(stakingPeriod - timeElapsed);
+        }
         
-        userToBlockTimestamp[msg.sender] = block.timestamp;
+        // Reset the timer for the next period
+        userLastActionTimestamp[msg.sender] = block.timestamp;
         
-        (bool success,) = msg.sender.call{value: rewardPerPeriod}("");
-        require(success, "Transfer failed");
+        (bool success, ) = msg.sender.call{value: rewardPerPeriod}("");
+        if (!success) revert TransferFailed();
+
+        emit RewardsClaimed(msg.sender, rewardPerPeriod);
     }
 
-    receive() external payable onlyOwner {
-        emit EtherSent(msg.value);
-    }
-
+    /// @notice Allows the owner to update the required staking duration
     function changeStakingPeriod(uint256 _newStakingPeriod) external onlyOwner {
         stakingPeriod = _newStakingPeriod;
-        emit ChangedStakingPeriod(_newStakingPeriod);
+        emit StakingPeriodChanged(_newStakingPeriod);
     }
 
+    /// @notice Allows the contract to receive ETH for rewards
+    receive() external payable {
+        emit ContractFunded(msg.sender, msg.value);
+    }
 }
