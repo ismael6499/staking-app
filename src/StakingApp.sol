@@ -17,6 +17,7 @@ contract StakingApp is Ownable{
     event ChangedStakingPeriod(uint256 _newStakingPeriod);
     event DepositTokens(address _userAddress, uint256 _amount);
     event WithdrawTokens(address _userAddress, uint256 _amount);
+    event EtherSent(uint256 _amount);
 
     constructor(address _stakingToken, address _owner, uint256 _stakingPeriod, uint256 _fixedStakingAmount, uint256 _rewardPerPeriod) Ownable(_owner){
         stakingToken = _stakingToken;
@@ -54,6 +55,10 @@ contract StakingApp is Ownable{
         
         (bool success,) = msg.sender.call{value: rewardPerPeriod}("");
         require(success, "Transfer failed");
+    }
+
+    receive() external payable onlyOwner {
+        emit EtherSent(msg.value);
     }
 
     function changeStakingPeriod(uint256 _newStakingPeriod) external onlyOwner {
