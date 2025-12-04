@@ -1,66 +1,31 @@
-## Foundry
+# 🥩 Staking App: DeFi Mechanics & Time-Based Logic
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Continuing my **Master in Blockchain Development** at **Blockchain Accelerator Academy**, this project simulates a core DeFi mechanism: **Staking**.
 
-Foundry consists of:
+As a **Java Software Engineer**, I'm used to handling dates and scheduled tasks with libraries like `Quartz` or `Cron`. In **Solidity**, time management relies on `block.timestamp`. This project explores how to lock assets (ERC-20 tokens) and distribute rewards (ETH) based on time duration.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## 💡 Project Overview
 
-## Documentation
+**Staking App** allows users to deposit a fixed amount of `STK` tokens to earn `ETH` rewards after a specific period (e.g., 7 days).
 
-https://book.getfoundry.sh/
+### 🔍 Key Technical Features:
 
-## Usage
+* **DeFi Architecture:**
+    * [cite_start]**Inter-Contract Interaction:** The system involves a custom ERC-20 token (`StakingToken`) interacting with the main logic contract (`StakingApp`) via the `IERC20` interface[cite: 18].
+    * [cite_start]**SafeERC20 Library:** Implemented OpenZeppelin's `SafeERC20` wrapper to ensure safe transfer operations, handling non-standard tokens correctly[cite: 19].
+    * [cite_start]**Time-Based Logic:** Usage of `block.timestamp` to track deposit durations and validate reward eligibility[cite: 30].
 
-### Build
+* **Advanced Foundry Testing:**
+    * **100% Line Coverage:** I went beyond the "Happy Path". [cite_start]I wrote a helper contract (`RejectEther`) specifically to test the `TransferFailed` error, ensuring even the `receive()` fallback logic is robust[cite: 120, 126].
+    * [cite_start]**Fuzzing & Cheatcodes:** Used `vm.warp()` to simulate time travel (waiting 7 days in milliseconds) and `vm.prank()` to simulate multiple users[cite: 110, 100].
 
-```shell
-$ forge build
-```
+## 🛠️ Stack & Tools
 
-### Test
+* **Framework:** Foundry (Forge).
+* **Language:** Solidity `0.8.24`.
+* **Libraries:** OpenZeppelin (`Ownable`, `ReentrancyGuard`, `SafeERC20`).
+* **Concepts:** Time manipulation, State Machines, Unit Testing.
 
-```shell
-$ forge test
-```
+---
 
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+*This project bridges the gap between simple smart contracts and real-world DeFi protocols.*
