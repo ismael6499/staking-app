@@ -1,36 +1,44 @@
-# 🥩 Staking App: Time-Based DeFi Protocol & Advanced Foundry Testing
+# 🥩 Time-Locked Staking Protocol
 
-A decentralized finance protocol implementing time-locked staking mechanics with ETH rewards, featuring a robust test suite designed for 100% code coverage.
+![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?style=flat-square&logo=solidity)
+![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-## 🚀 Engineering Context
+A decentralized yield farming protocol enabling time-locked asset staking with native Ether rewards.
 
-As a **Java Software Engineer**, I am accustomed to managing scheduled tasks and time-sensitive logic using centralized libraries like `Quartz` or system-level `Cron` jobs.
+This system replaces centralized scheduling (Cron jobs) with **on-chain timekeeping**, creating a trustless mechanism for asset maturity. It is engineered with a "Safety-First" architecture, utilizing defensive coding patterns to handle non-standard ERC20 tokens and potential interactions with malicious contracts.
 
-In this project, I engineered a decentralized alternative using the EVM's native timekeeping (`block.timestamp`). The goal was to create a trustless mechanism for asset locking and reward distribution that relies entirely on on-chain state, removing the need for external oracles or off-chain schedulers.
+## 🏗 Architecture & Design Decisions
 
-## 💡 Project Overview
+### 1. Trustless Scheduling
+- **EVM Time Management:**
+  - Logic relies purely on `block.timestamp` state deltas to determine reward eligibility (`timeElapsed < stakingPeriod`).
+  - **Benefit:** Removes dependency on external Keepers or Oracle updates for reward distribution, ensuring the protocol is self-contained and censorship-resistant.
 
-**Staking App** allows users to deposit a fixed amount of `STK` tokens to earn `ETH` rewards after a specific maturity period (e.g., 7 days). The architecture focuses on security patterns standard in high-value DeFi protocols.
+### 2. Defensive Engineering
+- **SafeERC20 Integration:**
+  - Uses OpenZeppelin's `SafeERC20` wrapper for all token transfers. This ensures compatibility with non-compliant tokens (like USDT) that do not return a boolean value on transfer, preventing silent failures.
+- **Hostile Actor Protection:**
+  - The `claimRewards` function is protected by `ReentrancyGuard` and strictly validates the return value of the low-level ETH `.call`.
+  - **Explicit Failure Handling:** If the recipient cannot accept ETH (e.g., a contract without a `receive()` function), the transaction reverts securely with `TransferFailed` rather than leaving the system in an inconsistent state.
 
-### 🔍 Key Technical Features:
+### 3. Advanced QA Strategy (Foundry)
+The test suite goes beyond happy paths to achieve **100% Branch Coverage**:
+- **Hostile Simulation:** Implemented a `RejectEther` mock contract in the test suite specifically to force low-level call failures, verifying that the protocol correctly reverts when interactions fail.
+- **Time Travel Fuzzing:** Leverages `vm.warp()` to simulate weeks of staking duration in milliseconds, validating logic across varied timeframes without mainnet waiting periods.
 
-* **DeFi Architecture & Security:**
-    * **SafeERC20 Implementation:** Integrated OpenZeppelin's `SafeERC20` wrapper to handle non-standard ERC-20 tokens that might not return a boolean on transfer, preventing silent failures.
-    * **Reentrancy Protection:** Applied `ReentrancyGuard` to the `claimRewards` function, a critical security measure when the contract sends ETH to unknown addresses.
-    * **Inter-Contract Communication:** The system decouples the token logic (`StakingToken`) from the staking mechanics (`StakingApp`), interacting strictly via the `IERC20` interface.
+## 🛠 Tech Stack
 
-* **Advanced Foundry Testing Strategy:**
-    * **100% Line Coverage:** I engineered a malicious mock contract (`RejectEther`) specifically to force-fail external calls. This allowed me to test the `TransferFailed` custom error and verify the robustness of the `receive()` fallback logic, covering edge cases often ignored in standard tests.
-    * **Fuzzing & Cheatcodes:** Leveraged Foundry's `vm.warp()` to simulate time travel (validating lock-up periods without waiting real-time) and `vm.prank()` to simulate multi-user scenarios.
+* **Core:** Solidity `^0.8.24`
+* **Libraries:** OpenZeppelin (SafeERC20, Ownable, ReentrancyGuard)
+* **Testing:** Foundry (Fuzzing, Mocking, Time Manipulation)
 
-## 🛠️ Stack & Tools
+## 📝 Contract Interface
 
-* **Framework:** Foundry.
-    * *Selected for its ability to write tests in Solidity and its powerful Fuzzing engine.*
-* **Language:** Solidity 0.8.24.
-* **Libraries:** OpenZeppelin (`Ownable`, `ReentrancyGuard`, `SafeERC20`).
-* **Concepts:** Time manipulation, State Machines, Property-Based Testing.
+The protocol exposes a simple state-machine interface for stakers:
 
----
-
-*This project is part of my specialized portfolio in Blockchain Architecture.*
+```solidity
+// Core Interaction
+function depositTokens(uint256 amount) external;
+function withdrawTokens() external;
+function claimRewards() external; // Distributes ETH based on time deltas
